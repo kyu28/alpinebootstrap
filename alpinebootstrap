@@ -1,0 +1,107 @@
+#!/bin/sh
+# Download and extract Alpine Linux mini rootfs
+# Written in POSIX Shell
+# Dependency: curl
+# Version 20240423
+
+# Change configs here
+
+# Mirror to download tarball
+MIRROR=https://mirrors.ustc.edu.cn/alpine
+
+# Alpine Linux version
+# Leave it empty to download latest-stable version
+VERSION=
+# Or specifies the version
+#VERSION=3.15.2
+
+# Target ISA
+ARCH=aarch64
+
+# Destination directory
+DIR=
+
+get_argv() {
+    idx=$1
+    shift
+    eval echo \$$idx
+}
+
+get_latest_version() {
+  echo "Querying latest version..."
+  info=$(curl -s $MIRROR/latest-stable/releases/$ARCH/latest-releases.yaml |
+    grep -A 7 '"Mini root filesystem"' |
+    grep -e branch: -e version:)
+  [ $? -ne 0 ] && die "Failed to query latest version"
+  BRANCH=$(get_argv 2 $info)
+  VERSION=$(get_argv 4 $info)
+  echo "Branch:" "$BRANCH"
+  echo "Version:" "$VERSION"
+}
+
+parse_branch() {
+  BRANCH=v${VERSION%.*}
+  echo "Branch:" "$BRANCH"
+  echo "Version:" "$VERSION"
+}
+
+get_filename() {
+  FILENAME=alpine-minirootfs-$VERSION-$ARCH.tar.gz
+  echo "Filename:" "$FILENAME"
+}
+
+ensure_dir() {
+  DIR="${DIR:-${FILENAME%.tar.gz}}"
+  if [ -d "$DIR" ] || [ -f "$DIR" ]; then
+    die "Cannot bootstrap to '$DIR': File exists"
+  fi
+}
+
+download_tarball() {
+  URL="$MIRROR/$BRANCH/releases/$ARCH/$FILENAME"
+  echo "Download:" "$URL"
+  curl -O "$URL"
+  [ $? -ne 0 ] && die "Failed to download tarball"
+}
+
+extract_tarball() {
+  mkdir "$DIR"
+  echo "Extracting tarball to" "$DIR"
+  tar -zxf "$FILENAME" -C "$DIR"
+}
+
+clean_up() {
+  echo "Cleaning up"
+  rm "$FILENAME"
+}
+
+setup_dns() {
+  echo "Try copying host machine's resolv.conf"
+  cp "/etc/resolv.conf" "$DIR/etc/resolv.conf"
+  if [ $? -ne 0 ]; then
+    echo "Failed to copy resolv.conf, creating a new one"
+    echo "nameserver 8.8.8.8" >> "$DIR/etc/resolv.conf"
+    echo "nameserver 8.8.4.4" >> "$DIR/etc/resolv.conf"
+  fi
+}
+
+die() {
+  echo "$1"
+  exit 1
+}
+
+main() {
+  if [ -z "$VERSION" ]; then
+      get_latest_version
+  else
+      parse_branch
+  fi
+  get_filename
+  ensure_dir
+  download_tarball
+  extract_tarball
+  clean_up
+  setup_dns
+}
+
+main

@@ -1,0 +1,1 @@
+cp alpinebootstrap /usr/bin
